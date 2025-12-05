@@ -323,8 +323,8 @@ export default function Dashboard() {
             hasAreas={areas.length > 0}
           />
 
-          {/* AI Auto-Detect Button */}
-          <div className="absolute top-4 right-4 z-10">
+          {/* AI Auto-Detect Button - positioned below Google Maps controls */}
+          <div className="absolute top-20 right-4 z-10">
             <AutoDetect
               mapRef={mapViewRef.current?.getMap() || null}
               mapBounds={mapViewRef.current?.getBounds() || null}

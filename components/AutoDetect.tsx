@@ -66,6 +66,8 @@ export default function AutoDetect({
   const [error, setError] = useState<string | null>(null);
   const [selectedFeatures, setSelectedFeatures] = useState<Set<number>>(new Set());
   const [showResults, setShowResults] = useState(false);
+  // Store the map bounds at detection time so we can use them when applying
+  const [savedMapBounds, setSavedMapBounds] = useState<google.maps.LatLngBounds | null>(null);
 
   const captureMapImage = async (): Promise<string | null> => {
     if (!mapRef) return null;
@@ -125,6 +127,9 @@ export default function AutoDetect({
       setError("Map not ready. Please wait for the map to load.");
       return;
     }
+
+    // Save the current map bounds for use when applying features
+    setSavedMapBounds(mapBounds);
 
     setIsDetecting(true);
     setError(null);
@@ -190,14 +195,20 @@ export default function AutoDetect({
   };
 
   const applySelectedFeatures = () => {
-    if (!result || !mapBounds) return;
+    if (!result || !savedMapBounds) {
+      console.error("Cannot apply features: no result or saved bounds");
+      return;
+    }
 
     const newAreas: DrawnArea[] = [];
+
+    console.log("Applying features with saved bounds:", savedMapBounds.toString());
 
     result.features.forEach((feature, index) => {
       if (!selectedFeatures.has(index)) return;
 
-      const points = boundsToPolygon(feature.bounds, mapBounds);
+      const points = boundsToPolygon(feature.bounds, savedMapBounds);
+      console.log(`Feature ${feature.type} points:`, points);
       const measurements = getMeasurements(points);
 
       // Use the AI-estimated area instead of calculated (more accurate)
@@ -215,6 +226,9 @@ export default function AutoDetect({
 
       newAreas.push(area);
     });
+
+    console.log("New areas to add:", newAreas);
+    console.log("All areas (existing + new):", [...existingAreas, ...newAreas]);
 
     onAreasDetected([...existingAreas, ...newAreas]);
     setShowResults(false);

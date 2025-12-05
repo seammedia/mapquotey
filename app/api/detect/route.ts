@@ -46,7 +46,6 @@ export async function POST(request: NextRequest) {
     });
 
     // Calculate approximate scale based on zoom level
-    // At zoom 20, 1 pixel ≈ 0.15m, at zoom 19 ≈ 0.3m, at zoom 18 ≈ 0.6m
     const metersPerPixel = 156543.03392 * Math.cos(mapBounds?.center?.lat * Math.PI / 180 || 0) / Math.pow(2, zoomLevel || 19);
 
     const response = await openai.chat.completions.create({
@@ -56,21 +55,29 @@ export async function POST(request: NextRequest) {
           role: "system",
           content: `You are an expert aerial imagery analyst specializing in property assessment for trades and services.
 
-Your task is to analyze satellite/aerial images of properties and identify distinct areas that could be quoted for services like lawn care, roofing, pressure washing, etc.
+IMPORTANT: You must ONLY analyze the SINGLE property at the CENTER of the image. This is the property that was searched for. Ignore all neighboring properties.
 
-For each detected feature, provide:
+Your task is to identify distinct areas on the CENTER PROPERTY ONLY that could be quoted for services like lawn care, roofing, pressure washing, etc.
+
+For each detected feature on the CENTER PROPERTY, provide:
 1. Type (lawn, roof, driveway, pool, deck, patio, fence, garden)
 2. Confidence level (0-1)
 3. Brief description
-4. Estimated area in square meters (based on typical Australian residential property sizes)
-5. Approximate bounds as percentages of the image (top, left, width, height from 0-100)
+4. Estimated area in square meters
+5. PRECISE bounds as percentages of the image (top, left, width, height from 0-100) - these must accurately outline the feature
 6. Primary color observed
 
-Be specific and practical. Focus on clearly visible, measurable areas.
-Typical Australian property sizes for reference:
+CRITICAL RULES:
+- ONLY detect features on the CENTER property (the one in the middle of the image)
+- DO NOT include any features from neighboring properties
+- The bounds must be PRECISE and TIGHT around each feature - not loose rectangles
+- If a feature is partially visible at the edge of the property, only include the part within the center property
+
+Typical Australian residential property sizes:
 - Front lawn: 50-150 m²
 - Back lawn: 100-300 m²
-- Roof: 150-300 m²
+- Roof (main house): 150-250 m²
+- Garage/shed roof: 30-50 m²
 - Driveway: 30-80 m²
 - Pool: 20-50 m²
 - Deck/Patio: 20-60 m²
@@ -87,7 +94,7 @@ Return your analysis as valid JSON matching this exact structure:
       "color": "string"
     }
   ],
-  "propertyAnalysis": "Brief overall property description",
+  "propertyAnalysis": "Brief description of the CENTER property only",
   "recommendations": ["Service recommendation 1", "Service recommendation 2"]
 }`
         },
@@ -96,16 +103,20 @@ Return your analysis as valid JSON matching this exact structure:
           content: [
             {
               type: "text",
-              text: `Analyze this aerial/satellite image of a property. Identify all distinct areas that could be quoted for trades services. The image is approximately ${Math.round(metersPerPixel * 800)}m x ${Math.round(metersPerPixel * 600)}m based on the zoom level.
+              text: `Analyze this aerial/satellite image. The image shows approximately ${Math.round(metersPerPixel * 800)}m x ${Math.round(metersPerPixel * 600)}m.
 
-Provide detailed detection of:
+IMPORTANT: Only analyze the property at the EXACT CENTER of this image. This is the searched address. Ignore all surrounding properties.
+
+For the CENTER PROPERTY ONLY, detect:
 - Lawn/grass areas (front and back separately if visible)
 - Roof sections (main house, garage, sheds)
-- Driveways and pathways
-- Pool areas
-- Decks and patios
-- Fencing (estimate linear meters)
+- Driveway and pathways
+- Pool (if present)
+- Deck or patio areas
+- Fencing (around this property only)
 - Garden beds
+
+Provide PRECISE bounds that tightly fit each feature. The bounds are percentages of the image dimensions (0-100).
 
 Return ONLY valid JSON, no markdown or explanations.`
             },
@@ -122,7 +133,7 @@ Return ONLY valid JSON, no markdown or explanations.`
         }
       ],
       max_tokens: 2000,
-      temperature: 0.3,
+      temperature: 0.2, // Lower temperature for more precise/consistent results
     });
 
     const content = response.choices[0]?.message?.content;

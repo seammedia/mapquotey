@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Loader2, Check, AlertCircle, X } from "lucide-react";
+import { Sparkles, Loader2, Check, AlertCircle, X, Wand2 } from "lucide-react";
 import { DrawnArea, ServiceType, LatLng } from "@/types";
 import { getMeasurements } from "@/lib/calculations";
 
@@ -43,15 +43,16 @@ const featureToService: Record<string, ServiceType> = {
   garden: "landscaping",
 };
 
-const featureColors: Record<string, string> = {
-  lawn: "#22c55e",
-  roof: "#ef4444",
-  driveway: "#6b7280",
-  pool: "#3b82f6",
-  deck: "#a855f7",
-  patio: "#f59e0b",
-  fence: "#78716c",
-  garden: "#84cc16",
+// Export colors so MapView can use them
+export const featureColors: Record<string, string> = {
+  lawn: "#22c55e",      // Green
+  roof: "#ef4444",      // Red
+  driveway: "#6b7280",  // Gray
+  pool: "#3b82f6",      // Blue
+  deck: "#a855f7",      // Purple
+  patio: "#f59e0b",     // Amber
+  fence: "#78716c",     // Stone
+  garden: "#84cc16",    // Lime
 };
 
 export default function AutoDetect({
@@ -69,10 +70,7 @@ export default function AutoDetect({
   const captureMapImage = async (): Promise<string | null> => {
     if (!mapRef) return null;
 
-    // Get the map container
     const mapDiv = mapRef.getDiv();
-
-    // Use html2canvas to capture the map
     const html2canvas = (await import("html2canvas")).default;
 
     try {
@@ -97,11 +95,17 @@ export default function AutoDetect({
   ): LatLng[] => {
     const ne = mapBounds.getNorthEast();
     const sw = mapBounds.getSouthWest();
+    const center = mapBounds.getCenter();
 
     const latRange = ne.lat() - sw.lat();
     const lngRange = ne.lng() - sw.lng();
 
-    // Convert percentage bounds to lat/lng
+    // The bounds are percentages relative to the image (0-100)
+    // We need to convert to lat/lng coordinates
+    // The image covers the full map bounds, so we map percentage to coordinates
+
+    // Calculate the actual lat/lng from percentage bounds
+    // Top of image = north (higher lat), left of image = west (lower lng)
     const top = ne.lat() - (bounds.top / 100) * latRange;
     const bottom = ne.lat() - ((bounds.top + bounds.height) / 100) * latRange;
     const left = sw.lng() + (bounds.left / 100) * lngRange;
@@ -127,7 +131,6 @@ export default function AutoDetect({
     setResult(null);
 
     try {
-      // Capture the current map view
       const imageBase64 = await captureMapImage();
 
       if (!imageBase64) {
@@ -137,7 +140,6 @@ export default function AutoDetect({
       const center = mapBounds.getCenter();
       const zoom = mapRef.getZoom() || 19;
 
-      // Send to AI for detection
       const response = await fetch("/api/detect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,14 +200,13 @@ export default function AutoDetect({
       const points = boundsToPolygon(feature.bounds, mapBounds);
       const measurements = getMeasurements(points);
 
-      // Override with AI-estimated area if significantly different
-      if (Math.abs(measurements.area - feature.estimatedArea) > feature.estimatedArea * 0.5) {
-        measurements.area = feature.estimatedArea;
-        measurements.areaFt = feature.estimatedArea * 10.7639;
-      }
+      // Use the AI-estimated area instead of calculated (more accurate)
+      measurements.area = feature.estimatedArea;
+      measurements.areaFt = feature.estimatedArea * 10.7639;
 
+      // Store the feature type in the ID for color coding
       const area: DrawnArea = {
-        id: `ai-${Date.now()}-${index}`,
+        id: `ai-${feature.type}-${Date.now()}-${index}`,
         type: "area",
         points,
         measurements,
@@ -222,28 +223,32 @@ export default function AutoDetect({
 
   return (
     <>
-      {/* Auto-Detect Button */}
+      {/* Auto-Detect Button - More visible */}
       <button
         onClick={handleDetect}
         disabled={isDetecting}
-        className={`control-btn ${isDetecting ? "opacity-50 cursor-wait" : "bg-gradient-to-r from-purple-500 to-pink-500 text-white border-purple-500 hover:from-purple-600 hover:to-pink-600"}`}
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium shadow-lg transition-all ${
+          isDetecting
+            ? "bg-gray-400 cursor-wait"
+            : "bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white shadow-violet-500/30 hover:shadow-violet-500/50"
+        }`}
       >
         {isDetecting ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Analyzing...
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Analyzing...</span>
           </>
         ) : (
           <>
-            <Sparkles className="w-4 h-4" />
-            AI Auto-Detect
+            <Wand2 className="w-5 h-5" />
+            <span>AI Auto-Detect</span>
           </>
         )}
       </button>
 
       {/* Error Message */}
       {error && (
-        <div className="absolute top-20 left-4 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg flex items-center gap-2 z-20">
+        <div className="absolute top-20 left-4 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg flex items-center gap-2 z-20 shadow-lg">
           <AlertCircle className="w-4 h-4" />
           <span className="text-sm">{error}</span>
           <button onClick={() => setError(null)} className="ml-2">
@@ -255,21 +260,21 @@ export default function AutoDetect({
       {/* Results Modal */}
       {showResults && result && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
             {/* Header */}
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-violet-600 to-fuchsia-600">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-purple-500" />
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Sparkles className="w-5 h-5" />
                   AI Detection Results
                 </h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  {result.features.length} features detected
+                <p className="text-sm text-white/80 mt-1">
+                  {result.features.length} features detected on center property
                 </p>
               </div>
               <button
                 onClick={() => setShowResults(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-white/80 hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -278,6 +283,22 @@ export default function AutoDetect({
             {/* Property Analysis */}
             <div className="p-4 bg-gray-50 border-b border-gray-200">
               <p className="text-sm text-gray-700">{result.propertyAnalysis}</p>
+            </div>
+
+            {/* Color Legend */}
+            <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+              <p className="text-xs text-gray-500 mb-2">Feature Colors on Map:</p>
+              <div className="flex flex-wrap gap-3">
+                {Object.entries(featureColors).map(([type, color]) => (
+                  <div key={type} className="flex items-center gap-1.5">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="text-xs text-gray-600 capitalize">{type}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Features List */}
@@ -289,14 +310,14 @@ export default function AutoDetect({
                     onClick={() => toggleFeature(index)}
                     className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
                       selectedFeatures.has(index)
-                        ? "border-purple-500 bg-purple-50"
+                        ? "border-violet-500 bg-violet-50"
                         : "border-gray-200 hover:border-gray-300"
                     }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3">
                         <div
-                          className="w-4 h-4 rounded-full mt-1"
+                          className="w-5 h-5 rounded mt-0.5 border-2 border-white shadow"
                           style={{ backgroundColor: featureColors[feature.type] }}
                         />
                         <div>
@@ -304,7 +325,13 @@ export default function AutoDetect({
                             <span className="font-medium text-gray-900 capitalize">
                               {feature.type.replace("_", " ")}
                             </span>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              feature.confidence >= 0.9
+                                ? "bg-green-100 text-green-700"
+                                : feature.confidence >= 0.7
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : "bg-gray-100 text-gray-600"
+                            }`}>
                               {Math.round(feature.confidence * 100)}% confident
                             </span>
                           </div>
@@ -317,9 +344,9 @@ export default function AutoDetect({
                         </div>
                       </div>
                       <div
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                           selectedFeatures.has(index)
-                            ? "bg-purple-500 border-purple-500"
+                            ? "bg-violet-500 border-violet-500"
                             : "border-gray-300"
                         }`}
                       >
@@ -341,7 +368,7 @@ export default function AutoDetect({
                   <ul className="space-y-1">
                     {result.recommendations.map((rec, i) => (
                       <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                        <span className="text-purple-500">•</span>
+                        <span className="text-violet-500">•</span>
                         {rec}
                       </li>
                     ))}
@@ -351,21 +378,21 @@ export default function AutoDetect({
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+            <div className="p-4 border-t border-gray-200 flex items-center justify-between bg-gray-50">
               <p className="text-sm text-gray-500">
                 {selectedFeatures.size} of {result.features.length} selected
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowResults(false)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={applySelectedFeatures}
                   disabled={selectedFeatures.size === 0}
-                  className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg transition-colors flex items-center gap-2"
+                  className="px-4 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 disabled:from-gray-300 disabled:to-gray-300 text-white rounded-lg transition-all flex items-center gap-2 shadow-md"
                 >
                   <Check className="w-4 h-4" />
                   Add {selectedFeatures.size} Areas

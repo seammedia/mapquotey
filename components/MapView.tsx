@@ -5,6 +5,33 @@ import { GoogleMap, useJsApiLoader, DrawingManager, Polygon } from "@react-googl
 import { DrawnArea, LatLng } from "@/types";
 import { getMeasurements } from "@/lib/calculations";
 
+// Feature type colors for AI-detected areas
+const featureColors: Record<string, string> = {
+  lawn: "#22c55e",      // Green
+  roof: "#ef4444",      // Red
+  driveway: "#6b7280",  // Gray
+  pool: "#3b82f6",      // Blue
+  deck: "#a855f7",      // Purple
+  patio: "#f59e0b",     // Amber
+  fence: "#78716c",     // Stone
+  garden: "#84cc16",    // Lime
+};
+
+// Get color for an area based on its ID (AI areas have format: ai-{type}-{timestamp}-{index})
+const getAreaColor = (areaId: string, isSelected: boolean): string => {
+  if (areaId.startsWith("ai-")) {
+    const parts = areaId.split("-");
+    if (parts.length >= 2) {
+      const featureType = parts[1];
+      if (featureColors[featureType]) {
+        return featureColors[featureType];
+      }
+    }
+    return "#a855f7"; // Default purple for AI areas
+  }
+  return isSelected ? "#ea580c" : "#f97316"; // Orange for manual areas
+};
+
 const libraries: ("places" | "drawing" | "geometry")[] = ["places", "drawing", "geometry"];
 
 const mapContainerStyle = {
@@ -216,28 +243,26 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
       )}
 
       {/* Render saved areas */}
-      {areas.map((area) => (
-        <Polygon
-          key={area.id}
-          paths={area.points}
-          options={{
-            fillColor: area.id.startsWith("ai-")
-              ? "#a855f7"
-              : selectedAreaId === area.id
-                ? "#ea580c"
-                : "#f97316",
-            fillOpacity: selectedAreaId === area.id ? 0.5 : 0.3,
-            strokeColor: area.id.startsWith("ai-")
-              ? "#a855f7"
-              : selectedAreaId === area.id
-                ? "#ea580c"
-                : "#f97316",
-            strokeWeight: selectedAreaId === area.id ? 3 : 2,
-            clickable: true,
-          }}
-          onClick={() => handleAreaClick(area.id)}
-        />
-      ))}
+      {areas.map((area) => {
+        const isSelected = selectedAreaId === area.id;
+        const color = getAreaColor(area.id, isSelected);
+
+        return (
+          <Polygon
+            key={area.id}
+            paths={area.points}
+            options={{
+              fillColor: color,
+              fillOpacity: isSelected ? 0.6 : 0.4,
+              strokeColor: color,
+              strokeWeight: isSelected ? 4 : 2,
+              strokeOpacity: 1,
+              clickable: true,
+            }}
+            onClick={() => handleAreaClick(area.id)}
+          />
+        );
+      })}
     </GoogleMap>
   );
 });

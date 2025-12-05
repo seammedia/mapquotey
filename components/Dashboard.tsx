@@ -6,10 +6,11 @@ import { DrawnArea, LatLng, PhotoUpload as PhotoUploadType } from "@/types";
 import { DEFAULT_MOBILIZATION_FEE, getServiceById } from "@/lib/services";
 import { formatCurrency, formatArea } from "@/lib/calculations";
 import AddressSearch from "./AddressSearch";
-import MapView from "./MapView";
+import MapView, { MapViewRef } from "./MapView";
 import MapControls from "./MapControls";
 import PricingPanel from "./PricingPanel";
 import PhotoUploadComponent from "./PhotoUpload";
+import AutoDetect from "./AutoDetect";
 import { LogOut, Image, X, Menu } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -17,6 +18,7 @@ import jsPDF from "jspdf";
 export default function Dashboard() {
   const { logout } = useAuth();
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapViewRef = useRef<MapViewRef>(null);
 
   // Map state
   const [mapCenter, setMapCenter] = useState<LatLng | undefined>(undefined);
@@ -75,6 +77,10 @@ export default function Dashboard() {
 
   const handleStopDrawing = useCallback(() => {
     setIsDrawing(false);
+  }, []);
+
+  const handleAreasDetected = useCallback((detectedAreas: DrawnArea[]) => {
+    setAreas(detectedAreas);
   }, []);
 
   const calculateTotal = useCallback(() => {
@@ -253,7 +259,7 @@ export default function Dashboard() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowPhotosPanel(!showPhotosPanel)}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`p-2 rounded-lg transition-colors relative ${
               showPhotosPanel
                 ? "bg-orange-100 text-orange-600"
                 : "hover:bg-gray-100 text-gray-600"
@@ -290,6 +296,7 @@ export default function Dashboard() {
         {/* Map Area */}
         <div className="flex-1 relative" ref={mapContainerRef}>
           <MapView
+            ref={mapViewRef}
             center={mapCenter}
             zoom={mapZoom}
             areas={areas}
@@ -315,6 +322,16 @@ export default function Dashboard() {
             onClearAllAreas={handleClearAllAreas}
             hasAreas={areas.length > 0}
           />
+
+          {/* AI Auto-Detect Button */}
+          <div className="absolute top-4 right-4 z-10">
+            <AutoDetect
+              mapRef={mapViewRef.current?.getMap() || null}
+              mapBounds={mapViewRef.current?.getBounds() || null}
+              onAreasDetected={handleAreasDetected}
+              existingAreas={areas}
+            />
+          </div>
         </div>
 
         {/* Photos Panel (Slide-out) */}

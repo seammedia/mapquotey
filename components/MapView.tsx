@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, useEffect, useMemo } from "react";
+import { useCallback, useRef, useState, useEffect, useMemo, forwardRef, useImperativeHandle } from "react";
 import { GoogleMap, useJsApiLoader, DrawingManager, Polygon } from "@react-google-maps/api";
 import { DrawnArea, LatLng } from "@/types";
 import { getMeasurements } from "@/lib/calculations";
@@ -28,7 +28,12 @@ interface MapViewProps {
   showPropertyBoundaries: boolean;
 }
 
-export default function MapView({
+export interface MapViewRef {
+  getMap: () => google.maps.Map | null;
+  getBounds: () => google.maps.LatLngBounds | null;
+}
+
+const MapView = forwardRef<MapViewRef, MapViewProps>(({
   center,
   zoom = 18,
   onAreasChange,
@@ -36,7 +41,7 @@ export default function MapView({
   isDrawing,
   drawingMode,
   showTopography,
-}: MapViewProps) {
+}, ref) => {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
     libraries,
@@ -45,6 +50,12 @@ export default function MapView({
   const mapRef = useRef<google.maps.Map | null>(null);
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
+
+  // Expose map methods to parent
+  useImperativeHandle(ref, () => ({
+    getMap: () => mapRef.current,
+    getBounds: () => mapRef.current?.getBounds() || null,
+  }));
 
   const mapOptions = useMemo(() => {
     if (!isLoaded) return {};
@@ -210,9 +221,17 @@ export default function MapView({
           key={area.id}
           paths={area.points}
           options={{
-            fillColor: selectedAreaId === area.id ? "#ea580c" : "#f97316",
+            fillColor: area.id.startsWith("ai-")
+              ? "#a855f7"
+              : selectedAreaId === area.id
+                ? "#ea580c"
+                : "#f97316",
             fillOpacity: selectedAreaId === area.id ? 0.5 : 0.3,
-            strokeColor: selectedAreaId === area.id ? "#ea580c" : "#f97316",
+            strokeColor: area.id.startsWith("ai-")
+              ? "#a855f7"
+              : selectedAreaId === area.id
+                ? "#ea580c"
+                : "#f97316",
             strokeWeight: selectedAreaId === area.id ? 3 : 2,
             clickable: true,
           }}
@@ -221,4 +240,8 @@ export default function MapView({
       ))}
     </GoogleMap>
   );
-}
+});
+
+MapView.displayName = "MapView";
+
+export default MapView;

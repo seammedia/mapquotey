@@ -18,16 +18,15 @@ const featureColors: Record<string, string> = {
 };
 
 const getAreaColor = (areaId: string): string => {
-  if (areaId.startsWith("ai-")) {
-    const parts = areaId.split("-");
-    if (parts.length >= 2) {
-      const featureType = parts[1];
-      if (featureColors[featureType]) {
-        return featureColors[featureType];
-      }
+  // Check if the ID starts with a known feature type
+  const parts = areaId.split("-");
+  if (parts.length >= 1) {
+    const featureType = parts[0];
+    if (featureColors[featureType]) {
+      return featureColors[featureType];
     }
-    return "#a855f7";
   }
+  // Fallback to orange for generic areas
   return "#f97316";
 };
 
@@ -78,23 +77,21 @@ function PolygonRenderer({
       return;
     }
 
-    console.log("=== PolygonRenderer useEffect ===", {
-      areasCount: areas.length,
-      mapFromHook: !!map,
-      mapCenter: map.getCenter()?.toString(),
-      mapZoom: map.getZoom()
-    });
-
     // Clear all existing polygons
     polygonsRef.current.forEach(p => {
       p.setMap(null);
     });
     polygonsRef.current = [];
 
-    // Create fresh polygons
+    // Create fresh polygons (only for enabled areas)
     areas.forEach((area, idx) => {
       if (!area.points || area.points.length < 3) {
         console.warn(`Invalid area ${area.id}, skipping`);
+        return;
+      }
+
+      // Skip disabled areas
+      if (area.enabled === false) {
         return;
       }
 
@@ -113,22 +110,12 @@ function PolygonRenderer({
         map: map,
       });
 
-      console.log(`Created polygon ${idx + 1}/${areas.length}:`, {
-        id: area.id,
-        color,
-        pointsCount: area.points.length,
-        isAttached: polygon.getMap() === map,
-        firstPoint: area.points[0]
-      });
-
       polygon.addListener("click", () => {
         onSelect(selectedAreaId === area.id ? null : area.id);
       });
 
       polygonsRef.current.push(polygon);
     });
-
-    console.log(`=== ${polygonsRef.current.length} polygons created ===`);
 
     // Cleanup
     return () => {

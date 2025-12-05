@@ -10,6 +10,7 @@ export interface DrawnArea {
   measurements: AreaMeasurements;
   serviceType?: ServiceType;
   pricePerUnit?: number;
+  enabled?: boolean; // Whether to include this area in calculations (default: true)
 }
 
 export interface AreaMeasurements {

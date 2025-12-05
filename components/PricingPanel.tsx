@@ -13,7 +13,29 @@ import {
   ChevronUp,
   Plus,
   Settings,
+  Check,
 } from "lucide-react";
+
+// Color mapping for area types
+const areaColors: Record<string, string> = {
+  roof: "#ef4444",
+  lawn: "#22c55e",
+  driveway: "#6b7280",
+  pool: "#3b82f6",
+  deck: "#a855f7",
+  patio: "#f59e0b",
+  fence: "#78716c",
+  garden: "#84cc16",
+};
+
+// Get color from area ID (e.g., "roof-123456" -> "#ef4444")
+const getAreaColor = (areaId: string): string => {
+  const parts = areaId.split("-");
+  if (parts.length >= 1 && areaColors[parts[0]]) {
+    return areaColors[parts[0]];
+  }
+  return "#f97316"; // Default orange
+};
 
 interface PricingPanelProps {
   areas: DrawnArea[];
@@ -51,7 +73,11 @@ export default function PricingPanel({
       : area.measurements.areaFt * service.pricePerSqFt;
   };
 
-  const subtotal = areas.reduce((sum, area) => sum + calculateAreaPrice(area), 0);
+  // Only include enabled areas in subtotal
+  const subtotal = areas.reduce((sum, area) => {
+    if (area.enabled === false) return sum;
+    return sum + calculateAreaPrice(area);
+  }, 0);
   const total = subtotal + mobilizationFee;
 
   const hasAreas = areas.length > 0;
@@ -105,26 +131,42 @@ export default function PricingPanel({
             </div>
 
             {/* Areas List */}
-            {areas.map((area, index) => (
+            {areas.map((area, index) => {
+              const areaColor = getAreaColor(area.id);
+              const isEnabled = area.enabled !== false; // Default to enabled
+
+              return (
               <div
                 key={area.id}
-                className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden"
+                className={`rounded-lg border overflow-hidden transition-opacity ${
+                  isEnabled ? "bg-gray-50 border-gray-200" : "bg-gray-100 border-gray-200 opacity-60"
+                }`}
+                style={{ borderLeftWidth: "4px", borderLeftColor: areaColor }}
               >
                 {/* Area Header */}
-                <button
-                  onClick={() =>
-                    setExpandedAreaId(expandedAreaId === area.id ? null : area.id)
-                  }
-                  className="w-full p-3 flex items-center justify-between text-left hover:bg-gray-100 transition-colors"
-                >
+                <div className="w-full p-3 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                      <span className="text-orange-600 font-medium text-sm">
-                        {index + 1}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 text-sm">
+                    {/* Checkbox Toggle */}
+                    <button
+                      onClick={() => onUpdateArea(area.id, { enabled: !isEnabled })}
+                      className={`w-6 h-6 rounded flex items-center justify-center border-2 transition-colors ${
+                        isEnabled
+                          ? "border-transparent"
+                          : "border-gray-300 bg-white"
+                      }`}
+                      style={{
+                        backgroundColor: isEnabled ? areaColor : undefined,
+                      }}
+                    >
+                      {isEnabled && <Check className="w-4 h-4 text-white" />}
+                    </button>
+                    <button
+                      onClick={() =>
+                        setExpandedAreaId(expandedAreaId === area.id ? null : area.id)
+                      }
+                      className="flex-1 text-left"
+                    >
+                      <p className={`font-medium text-sm ${isEnabled ? "text-gray-900" : "text-gray-500"}`}>
                         {area.serviceType
                           ? getServiceById(area.serviceType)?.name || "Area"
                           : `Area ${index + 1}`}
@@ -135,19 +177,25 @@ export default function PricingPanel({
                           isMetric
                         )}
                       </p>
-                    </div>
+                    </button>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-900">
+                    <span className={`font-semibold ${isEnabled ? "text-gray-900" : "text-gray-400 line-through"}`}>
                       {formatCurrency(calculateAreaPrice(area))}
                     </span>
-                    {expandedAreaId === area.id ? (
-                      <ChevronUp className="w-4 h-4 text-gray-400" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-gray-400" />
-                    )}
+                    <button
+                      onClick={() =>
+                        setExpandedAreaId(expandedAreaId === area.id ? null : area.id)
+                      }
+                    >
+                      {expandedAreaId === area.id ? (
+                        <ChevronUp className="w-4 h-4 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-gray-400" />
+                      )}
+                    </button>
                   </div>
-                </button>
+                </div>
 
                 {/* Expanded Content */}
                 {expandedAreaId === area.id && (
@@ -237,7 +285,8 @@ export default function PricingPanel({
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

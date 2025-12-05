@@ -10,7 +10,7 @@ import MapView, { MapViewRef } from "./MapView";
 import MapControls from "./MapControls";
 import PricingPanel from "./PricingPanel";
 import PhotoUploadComponent from "./PhotoUpload";
-import AutoDetect from "./AutoDetect";
+import QuickAddButtons from "./QuickAddButtons";
 import { LogOut, Image, X, Menu } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -29,6 +29,7 @@ export default function Dashboard() {
   const [areas, setAreas] = useState<DrawnArea[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawingMode, setDrawingMode] = useState<"area" | "trail">("area");
+  const [currentDrawingType, setCurrentDrawingType] = useState<string | null>(null);
 
   // View state
   const [showTopography, setShowTopography] = useState(false);
@@ -79,9 +80,50 @@ export default function Dashboard() {
     setIsDrawing(false);
   }, []);
 
-  const handleAreasDetected = useCallback((detectedAreas: DrawnArea[]) => {
-    setAreas(detectedAreas);
+  const handleQuickAddSelect = useCallback((type: string) => {
+    setCurrentDrawingType(type);
+    setDrawingMode("area");
+    setIsDrawing(true);
   }, []);
+
+  // When areas change (new area drawn), assign the current drawing type
+  const handleAreasChange = useCallback((newAreas: DrawnArea[]) => {
+    // Check if a new area was added
+    if (newAreas.length > areas.length && currentDrawingType) {
+      const lastArea = newAreas[newAreas.length - 1];
+      // Map drawing type to service type
+      const typeToService: Record<string, string> = {
+        roof: "roofing",
+        lawn: "lawn_care",
+        driveway: "pressure_washing",
+        pool: "pool_area",
+        fence: "fencing",
+        garden: "landscaping",
+        deck: "decking",
+        patio: "paving",
+      };
+
+      const serviceType = typeToService[currentDrawingType];
+      if (serviceType && lastArea) {
+        // Update the last area with the service type and a descriptive ID
+        const updatedAreas = newAreas.map((area, idx) => {
+          if (idx === newAreas.length - 1) {
+            return {
+              ...area,
+              id: `${currentDrawingType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              serviceType: serviceType as any,
+            };
+          }
+          return area;
+        });
+        setAreas(updatedAreas);
+        // Stop drawing after adding an area
+        setIsDrawing(false);
+        return;
+      }
+    }
+    setAreas(newAreas);
+  }, [areas.length, currentDrawingType]);
 
   const calculateTotal = useCallback(() => {
     const subtotal = areas.reduce((sum, area) => {
@@ -300,7 +342,7 @@ export default function Dashboard() {
             center={mapCenter}
             zoom={mapZoom}
             areas={areas}
-            onAreasChange={setAreas}
+            onAreasChange={handleAreasChange}
             isDrawing={isDrawing}
             drawingMode={drawingMode}
             showTopography={showTopography}
@@ -323,13 +365,12 @@ export default function Dashboard() {
             hasAreas={areas.length > 0}
           />
 
-          {/* AI Auto-Detect Button - positioned below Google Maps controls */}
+          {/* Quick Add Buttons - positioned below Map/Satellite toggle */}
           <div className="absolute top-20 right-4 z-10">
-            <AutoDetect
-              mapRef={mapViewRef.current?.getMap() || null}
-              mapBounds={mapViewRef.current?.getBounds() || null}
-              onAreasDetected={handleAreasDetected}
-              existingAreas={areas}
+            <QuickAddButtons
+              onSelectType={handleQuickAddSelect}
+              isDrawing={isDrawing}
+              currentDrawingType={currentDrawingType}
             />
           </div>
         </div>

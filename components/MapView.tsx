@@ -251,15 +251,16 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
 
         return (
           <Polygon
-            key={area.id}
+            key={`${area.id}-${color}-${isSelected}`}
             paths={area.points}
             options={{
               fillColor: color,
-              fillOpacity: isSelected ? 0.6 : 0.4,
+              fillOpacity: isSelected ? 0.5 : 0.35,
               strokeColor: color,
-              strokeWeight: isSelected ? 4 : 2,
+              strokeWeight: isSelected ? 4 : 3,
               strokeOpacity: 1,
               clickable: true,
+              zIndex: isSelected ? 10 : 1,
             }}
             onClick={() => handleAreaClick(area.id)}
           />

@@ -76,13 +76,39 @@ export default function AutoDetect({
     const html2canvas = (await import("html2canvas")).default;
 
     try {
+      // Hide Google Maps UI controls before capture
+      const controls = mapDiv.querySelectorAll('.gm-style-mtc, .gm-svpc, .gm-control-active, .gm-fullscreen-control, [class*="gm-style"]>div>div:not(:first-child)');
+      const hiddenElements: HTMLElement[] = [];
+
+      controls.forEach((el) => {
+        if (el instanceof HTMLElement && el.style.display !== 'none') {
+          hiddenElements.push(el);
+          el.style.visibility = 'hidden';
+        }
+      });
+
       const canvas = await html2canvas(mapDiv, {
         useCORS: true,
         allowTaint: true,
         scale: 1,
         logging: false,
         backgroundColor: null,
+        ignoreElements: (element) => {
+          // Ignore Google Maps controls and overlays
+          return element.classList?.contains('gm-style-mtc') ||
+                 element.classList?.contains('gm-svpc') ||
+                 element.classList?.contains('gm-control-active') ||
+                 element.classList?.contains('gmnoprint');
+        }
       });
+
+      // Restore visibility
+      hiddenElements.forEach((el) => {
+        el.style.visibility = 'visible';
+      });
+
+      console.log("Captured map image dimensions:", canvas.width, "x", canvas.height);
+      console.log("Map div dimensions:", mapDiv.clientWidth, "x", mapDiv.clientHeight);
 
       return canvas.toDataURL("image/png");
     } catch (err) {

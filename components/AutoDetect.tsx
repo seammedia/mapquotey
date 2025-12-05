@@ -93,32 +93,42 @@ export default function AutoDetect({
 
   const boundsToPolygon = (
     bounds: DetectedFeature["bounds"],
-    mapBounds: google.maps.LatLngBounds
+    mapBounds: google.maps.LatLngBounds,
+    mapDiv?: HTMLElement | null
   ): LatLng[] => {
     const ne = mapBounds.getNorthEast();
     const sw = mapBounds.getSouthWest();
-    const center = mapBounds.getCenter();
 
     const latRange = ne.lat() - sw.lat();
     const lngRange = ne.lng() - sw.lng();
 
-    // The bounds are percentages relative to the image (0-100)
-    // We need to convert to lat/lng coordinates
-    // The image covers the full map bounds, so we map percentage to coordinates
+    // The AI returns percentages (0-100) relative to the captured image
+    // The image is captured from the map div, which should match the bounds
 
-    // Calculate the actual lat/lng from percentage bounds
-    // Top of image = north (higher lat), left of image = west (lower lng)
-    const top = ne.lat() - (bounds.top / 100) * latRange;
-    const bottom = ne.lat() - ((bounds.top + bounds.height) / 100) * latRange;
-    const left = sw.lng() + (bounds.left / 100) * lngRange;
-    const right = sw.lng() + ((bounds.left + bounds.width) / 100) * lngRange;
+    // Convert percentage bounds to lat/lng
+    // Image coordinate system: top-left is (0,0), increases right and down
+    // Lat/Lng: lat increases going north (up), lng increases going east (right)
 
-    // Create polygon points (clockwise)
+    const topLat = ne.lat() - (bounds.top / 100) * latRange;
+    const bottomLat = ne.lat() - ((bounds.top + bounds.height) / 100) * latRange;
+    const leftLng = sw.lng() + (bounds.left / 100) * lngRange;
+    const rightLng = sw.lng() + ((bounds.left + bounds.width) / 100) * lngRange;
+
+    console.log("boundsToPolygon conversion:", {
+      inputBounds: bounds,
+      mapBoundsNE: { lat: ne.lat(), lng: ne.lng() },
+      mapBoundsSW: { lat: sw.lat(), lng: sw.lng() },
+      latRange,
+      lngRange,
+      output: { topLat, bottomLat, leftLng, rightLng }
+    });
+
+    // Create polygon points (clockwise from top-left)
     return [
-      { lat: top, lng: left },
-      { lat: top, lng: right },
-      { lat: bottom, lng: right },
-      { lat: bottom, lng: left },
+      { lat: topLat, lng: leftLng },
+      { lat: topLat, lng: rightLng },
+      { lat: bottomLat, lng: rightLng },
+      { lat: bottomLat, lng: leftLng },
     ];
   };
 

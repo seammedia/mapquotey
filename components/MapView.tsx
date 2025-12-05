@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, useEffect, useMemo, forwardRef, useImperativeHandle } from "react";
-import { GoogleMap, useJsApiLoader, DrawingManager, Polygon } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, DrawingManager } from "@react-google-maps/api";
 import { DrawnArea, LatLng } from "@/types";
 import { getMeasurements } from "@/lib/calculations";
 
@@ -76,7 +76,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
 
   const mapRef = useRef<google.maps.Map | null>(null);
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
+  const polygonsRef = useRef<google.maps.Polygon[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
 
   // Expose map methods to parent
   useImperativeHandle(ref, () => ({
@@ -102,8 +104,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
   }, [isLoaded, showTopography]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
+    console.log("=== MAP LOADED ===", map.getDiv().id || "no-id");
     mapRef.current = map;
-    console.log("Map loaded and ready");
+    setMapInstance(map); // Trigger re-render with map instance
   }, []);
 
   const onDrawingManagerLoad = useCallback(
@@ -175,10 +178,93 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
     }
   }, [center, zoom]);
 
-  // Handle polygon click
-  const handlePolygonClick = useCallback((areaId: string) => {
-    setSelectedAreaId(prev => prev === areaId ? null : areaId);
-  }, []);
+  // Create and manage polygons using native Google Maps API
+  // This runs whenever areas change or map instance changes
+  useEffect(() => {
+    const map = mapInstance;
+
+    console.log("=== POLYGON EFFECT ===", {
+      hasMap: !!map,
+      areasCount: areas.length,
+      existingPolygons: polygonsRef.current.length
+    });
+
+    if (!map) {
+      console.log("No map instance yet, skipping polygon creation");
+      return;
+    }
+
+    // Clear ALL existing polygons first
+    console.log("Clearing", polygonsRef.current.length, "existing polygons");
+    polygonsRef.current.forEach((p) => {
+      p.setMap(null);
+    });
+    polygonsRef.current = [];
+
+    // Create fresh polygons for each area
+    areas.forEach((area, index) => {
+      const color = getAreaColor(area.id);
+      const isSelected = selectedAreaId === area.id;
+
+      console.log(`Creating polygon ${index + 1}/${areas.length}:`, {
+        id: area.id,
+        color,
+        pointsCount: area.points.length,
+        firstPoint: area.points[0],
+        lastPoint: area.points[area.points.length - 1]
+      });
+
+      // Validate points
+      if (!area.points || area.points.length < 3) {
+        console.error(`Invalid points for area ${area.id}:`, area.points);
+        return;
+      }
+
+      // Create path from points
+      const path = area.points.map(p => new google.maps.LatLng(p.lat, p.lng));
+
+      // Create new polygon with explicit settings
+      const polygon = new google.maps.Polygon({
+        paths: path,
+        strokeColor: isSelected ? "#ffffff" : color,
+        strokeOpacity: 1,
+        strokeWeight: isSelected ? 4 : 3,
+        fillColor: color,
+        fillOpacity: isSelected ? 0.7 : 0.5,
+        zIndex: isSelected ? 9999 : 1000,
+        clickable: true,
+        geodesic: true,
+      });
+
+      // IMPORTANT: Set map AFTER creating polygon
+      polygon.setMap(map);
+
+      // Verify it's attached
+      const attachedMap = polygon.getMap();
+      console.log(`Polygon ${area.id} attached:`, {
+        hasMap: !!attachedMap,
+        sameMap: attachedMap === map,
+        visible: polygon.getVisible(),
+        pathLength: polygon.getPath()?.getLength()
+      });
+
+      // Add click handler
+      polygon.addListener("click", () => {
+        console.log("Polygon clicked:", area.id);
+        setSelectedAreaId(prev => prev === area.id ? null : area.id);
+      });
+
+      // Store reference
+      polygonsRef.current.push(polygon);
+    });
+
+    console.log("=== POLYGONS CREATED ===", polygonsRef.current.length);
+
+    // Cleanup on unmount only
+    return () => {
+      // Don't clear here - we clear at the start of the effect
+    };
+  }, [areas, mapInstance, selectedAreaId]);
 
   if (loadError) {
     return (
@@ -236,30 +322,6 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
           }}
         />
       )}
-
-      {/* Render polygons using React components - automatically binds to correct map instance */}
-      {areas.map((area) => {
-        const isSelected = selectedAreaId === area.id;
-        const color = getAreaColor(area.id);
-        const isAIArea = area.id.startsWith("ai-");
-
-        return (
-          <Polygon
-            key={area.id}
-            paths={area.points}
-            options={{
-              fillColor: color,
-              fillOpacity: isSelected ? 0.7 : (isAIArea ? 0.55 : 0.45),
-              strokeColor: isSelected ? "#ffffff" : color,
-              strokeWeight: isSelected ? 4 : 3,
-              strokeOpacity: 1,
-              zIndex: isSelected ? 9999 : 1000,
-              clickable: true,
-            }}
-            onClick={() => handlePolygonClick(area.id)}
-          />
-        );
-      })}
     </GoogleMap>
   );
 });

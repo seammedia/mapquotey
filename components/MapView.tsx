@@ -195,18 +195,17 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
     }
 
     const map = mapRef.current;
-    const currentPolygons = polygonsRef.current;
 
     console.log("Processing", areas.length, "areas for polygon creation");
 
-    // Track which area IDs we've processed
+    // Get current polygon IDs
     const currentAreaIds = new Set(areas.map(a => a.id));
 
     // Remove polygons that no longer exist
-    currentPolygons.forEach((polygon, id) => {
+    polygonsRef.current.forEach((polygon, id) => {
       if (!currentAreaIds.has(id)) {
         polygon.setMap(null);
-        currentPolygons.delete(id);
+        polygonsRef.current.delete(id);
         console.log(`Removed polygon ${id}`);
       }
     });
@@ -220,32 +219,41 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
         color,
         pointsCount: area.points.length,
         firstPoint: area.points[0],
-        existingPolygon: currentPolygons.has(area.id)
+        existingPolygon: polygonsRef.current.has(area.id)
       });
 
-      let polygon = currentPolygons.get(area.id);
+      let polygon = polygonsRef.current.get(area.id);
 
       if (!polygon) {
-        // Create new polygon with all options upfront
+        // Create new polygon with high visibility settings
         polygon = new google.maps.Polygon({
-          paths: area.points,
+          paths: area.points.map(p => ({ lat: p.lat, lng: p.lng })),
           map: map,
           fillColor: color,
-          fillOpacity: isSelected ? 0.5 : 0.4,
-          strokeColor: isSelected ? "#ffffff" : color,
-          strokeWeight: isSelected ? 4 : 3,
+          fillOpacity: 0.5,
+          strokeColor: "#ffffff",
+          strokeWeight: 4,
           strokeOpacity: 1,
-          zIndex: isSelected ? 10 : 1,
+          zIndex: 9999,
           clickable: true,
+          visible: true,
+          geodesic: true,
         });
+
+        // Force the polygon onto the map
+        polygon.setMap(map);
+
+        // Verify the polygon was added to the map
+        const assignedMap = polygon.getMap();
+        console.log(`Polygon created, map assigned:`, assignedMap === map, "Map exists:", !!assignedMap);
 
         // Add click listener
         polygon.addListener("click", () => {
           setSelectedAreaId(prev => prev === area.id ? null : area.id);
         });
 
-        currentPolygons.set(area.id, polygon);
-        console.log(`Created polygon ${area.id} with color ${color}, points:`, area.points);
+        polygonsRef.current.set(area.id, polygon);
+        console.log(`Created polygon ${area.id} with color ${color}, bounds:`, polygon.getPath()?.getArray());
       } else {
         // Update existing polygon options
         polygon.setOptions({
@@ -254,15 +262,25 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
           strokeColor: isSelected ? "#ffffff" : color,
           strokeWeight: isSelected ? 4 : 3,
           strokeOpacity: 1,
-          zIndex: isSelected ? 10 : 1,
+          zIndex: isSelected ? 9999 : 1000,
         });
 
-        // Update path if needed
-        polygon.setPath(area.points);
+        // Ensure it's on the map
+        if (!polygon.getMap()) {
+          polygon.setMap(map);
+        }
+
+        // Update path
+        polygon.setPath(area.points.map(p => ({ lat: p.lat, lng: p.lng })));
       }
     });
 
-    console.log("Total polygons after processing:", currentPolygons.size);
+    console.log("Total polygons after processing:", polygonsRef.current.size);
+
+    // Cleanup function
+    return () => {
+      // Don't remove polygons on cleanup - they should persist
+    };
 
   }, [areas, selectedAreaId, isLoaded, mapReady]);
 

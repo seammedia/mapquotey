@@ -78,6 +78,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
   const polygonsRef = useRef<Map<string, google.maps.Polygon>>(new Map());
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   // Expose map methods to parent
   useImperativeHandle(ref, () => ({
@@ -104,6 +105,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
 
   const onLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
+    setMapReady(true);
+    console.log("Map loaded and ready");
   }, []);
 
   const onDrawingManagerLoad = useCallback(
@@ -184,10 +187,17 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
 
   // Manage native Google Maps polygons for better control over styling
   useEffect(() => {
-    if (!mapRef.current || !isLoaded) return;
+    console.log("Polygon effect triggered:", { mapReady, isLoaded, areasCount: areas.length, mapRefExists: !!mapRef.current });
+
+    if (!mapRef.current || !isLoaded || !mapReady) {
+      console.log("Skipping polygon creation - map not ready");
+      return;
+    }
 
     const map = mapRef.current;
     const currentPolygons = polygonsRef.current;
+
+    console.log("Processing", areas.length, "areas for polygon creation");
 
     // Track which area IDs we've processed
     const currentAreaIds = new Set(areas.map(a => a.id));
@@ -197,6 +207,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
       if (!currentAreaIds.has(id)) {
         polygon.setMap(null);
         currentPolygons.delete(id);
+        console.log(`Removed polygon ${id}`);
       }
     });
 
@@ -205,13 +216,27 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
       const isSelected = selectedAreaId === area.id;
       const color = getAreaColor(area.id, isSelected);
 
+      console.log(`Processing area ${area.id}:`, {
+        color,
+        pointsCount: area.points.length,
+        firstPoint: area.points[0],
+        existingPolygon: currentPolygons.has(area.id)
+      });
+
       let polygon = currentPolygons.get(area.id);
 
       if (!polygon) {
-        // Create new polygon
+        // Create new polygon with all options upfront
         polygon = new google.maps.Polygon({
           paths: area.points,
           map: map,
+          fillColor: color,
+          fillOpacity: isSelected ? 0.5 : 0.4,
+          strokeColor: isSelected ? "#ffffff" : color,
+          strokeWeight: isSelected ? 4 : 3,
+          strokeOpacity: 1,
+          zIndex: isSelected ? 10 : 1,
+          clickable: true,
         });
 
         // Add click listener
@@ -220,24 +245,26 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
         });
 
         currentPolygons.set(area.id, polygon);
-        console.log(`Created polygon ${area.id} with color ${color}`);
+        console.log(`Created polygon ${area.id} with color ${color}, points:`, area.points);
+      } else {
+        // Update existing polygon options
+        polygon.setOptions({
+          fillColor: color,
+          fillOpacity: isSelected ? 0.5 : 0.4,
+          strokeColor: isSelected ? "#ffffff" : color,
+          strokeWeight: isSelected ? 4 : 3,
+          strokeOpacity: 1,
+          zIndex: isSelected ? 10 : 1,
+        });
+
+        // Update path if needed
+        polygon.setPath(area.points);
       }
-
-      // Update polygon options (works for both new and existing)
-      polygon.setOptions({
-        fillColor: color,
-        fillOpacity: isSelected ? 0.5 : 0.4,
-        strokeColor: isSelected ? "#ffffff" : color,
-        strokeWeight: isSelected ? 4 : 3,
-        strokeOpacity: 1,
-        zIndex: isSelected ? 10 : 1,
-      });
-
-      // Update path if needed
-      polygon.setPath(area.points);
     });
 
-  }, [areas, selectedAreaId, isLoaded]);
+    console.log("Total polygons after processing:", currentPolygons.size);
+
+  }, [areas, selectedAreaId, isLoaded, mapReady]);
 
   if (loadError) {
     return (

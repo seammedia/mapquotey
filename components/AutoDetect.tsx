@@ -123,13 +123,24 @@ export default function AutoDetect({
   };
 
   const handleDetect = async () => {
-    if (!mapRef || !mapBounds) {
+    if (!mapRef) {
       setError("Map not ready. Please wait for the map to load.");
       return;
     }
 
+    // Get FRESH bounds directly from the map at detection time
+    const currentBounds = mapRef.getBounds();
+    if (!currentBounds) {
+      setError("Could not get map bounds. Please try again.");
+      return;
+    }
+
+    console.log("=== AI Detection Started ===");
+    console.log("Current map center:", mapRef.getCenter()?.toString());
+    console.log("Current map bounds:", currentBounds.toString());
+
     // Save the current map bounds for use when applying features
-    setSavedMapBounds(mapBounds);
+    setSavedMapBounds(currentBounds);
 
     setIsDetecting(true);
     setError(null);
@@ -142,7 +153,7 @@ export default function AutoDetect({
         throw new Error("Failed to capture map image");
       }
 
-      const center = mapBounds.getCenter();
+      const center = currentBounds.getCenter();
       const zoom = mapRef.getZoom() || 19;
 
       const response = await fetch("/api/detect", {
@@ -152,8 +163,8 @@ export default function AutoDetect({
           imageBase64,
           mapBounds: {
             center: { lat: center.lat(), lng: center.lng() },
-            ne: { lat: mapBounds.getNorthEast().lat(), lng: mapBounds.getNorthEast().lng() },
-            sw: { lat: mapBounds.getSouthWest().lat(), lng: mapBounds.getSouthWest().lng() },
+            ne: { lat: currentBounds.getNorthEast().lat(), lng: currentBounds.getNorthEast().lng() },
+            sw: { lat: currentBounds.getSouthWest().lat(), lng: currentBounds.getSouthWest().lng() },
           },
           zoomLevel: zoom,
         }),

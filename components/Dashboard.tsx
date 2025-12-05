@@ -11,7 +11,8 @@ import MapControls from "./MapControls";
 import PricingPanel from "./PricingPanel";
 import PhotoUploadComponent from "./PhotoUpload";
 import QuickAddButtons from "./QuickAddButtons";
-import { LogOut, Image, X, Menu } from "lucide-react";
+import ProjectsPanel, { Project } from "./ProjectsPanel";
+import { LogOut, Image, X, Menu, FolderOpen } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -36,6 +37,7 @@ export default function Dashboard() {
   const [showPropertyBoundaries, setShowPropertyBoundaries] = useState(true);
   const [showPhotosPanel, setShowPhotosPanel] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showProjectsPanel, setShowProjectsPanel] = useState(true);
 
   // Photos state
   const [photos, setPhotos] = useState<PhotoUploadType[]>([]);
@@ -78,6 +80,20 @@ export default function Dashboard() {
 
   const handleStopDrawing = useCallback(() => {
     setIsDrawing(false);
+  }, []);
+
+  const handleLoadProject = useCallback((project: Project) => {
+    setCurrentAddress(project.address);
+    setMapCenter(project.center);
+    setMapZoom(project.zoom);
+    setAreas(project.areas);
+  }, []);
+
+  const handleNewProject = useCallback(() => {
+    setCurrentAddress("");
+    setMapCenter(undefined);
+    setMapZoom(18);
+    setAreas([]);
   }, []);
 
   const handleQuickAddSelect = useCallback((type: string) => {
@@ -300,6 +316,17 @@ export default function Dashboard() {
         {/* Header Actions */}
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowProjectsPanel(!showProjectsPanel)}
+            className={`p-2 rounded-lg transition-colors ${
+              showProjectsPanel
+                ? "bg-orange-100 text-orange-600"
+                : "hover:bg-gray-100 text-gray-600"
+            }`}
+            title="Projects"
+          >
+            <FolderOpen className="w-5 h-5" />
+          </button>
+          <button
             onClick={() => setShowPhotosPanel(!showPhotosPanel)}
             className={`p-2 rounded-lg transition-colors relative ${
               showPhotosPanel
@@ -335,6 +362,20 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Projects Panel - Left Side */}
+        {showProjectsPanel && (
+          <div className="hidden lg:block">
+            <ProjectsPanel
+              currentAddress={currentAddress}
+              currentCenter={mapCenter}
+              currentZoom={mapZoom}
+              currentAreas={areas}
+              onLoadProject={handleLoadProject}
+              onNewProject={handleNewProject}
+            />
+          </div>
+        )}
+
         {/* Map Area */}
         <div className="flex-1 relative" ref={mapContainerRef}>
           <MapView

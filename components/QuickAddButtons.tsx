@@ -44,10 +44,9 @@ export default function QuickAddButtons({
                   : "hover:bg-gray-50"
               }`}
               style={{
-                backgroundColor: isActive ? `${type.color}15` : undefined,
+                backgroundColor: isActive ? `${type.color}20` : undefined,
                 color: isActive ? type.color : "#374151",
-                borderColor: isActive ? type.color : undefined,
-                ringColor: isActive ? type.color : undefined,
+                boxShadow: isActive ? `0 0 0 2px ${type.color}` : undefined,
               }}
             >
               <Icon

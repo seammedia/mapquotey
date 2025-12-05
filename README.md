@@ -7,21 +7,23 @@ A web-based platform that allows trades and services to enter client addresses a
 - **PIN Authentication**: Secure access with master PIN (default: 1991)
 - **Address Search**: Google Places autocomplete for Australian addresses
 - **Aerial Imagery**: Satellite view from Google Maps for property measurement
+- **Quick-Add Area Types**: Pre-configured buttons for common area types:
+  - Roof (red)
+  - Grass/Lawn (green)
+  - Concrete/Driveway (gray)
+  - Pool (blue)
+  - Fence (stone)
+  - Garden (lime)
+  - Deck (purple)
+  - Patio (amber)
 - **Drawing Tools**:
   - Area tool for measuring surfaces (lawns, roofs, driveways)
   - Trail tool for measuring linear features (fencing, edging)
+- **Color-Coded Polygons**: Each area type has a distinct color on the map
+- **Checkbox Toggles**: Enable/disable areas in pricing calculations
 - **Real-time Measurements**: Automatic calculation of area (m² and ft²) and perimeter
-- **Service Pricing**: Pre-configured pricing for common services:
-  - Lawn Care
-  - Pressure Washing
-  - Concreting
-  - Decking
-  - Roofing
-  - Fencing
-  - Landscaping
-  - Paving
-  - Pool Area
-  - Custom Service
+- **Service Pricing**: Pre-configured pricing for common services
+- **Projects Panel**: Save and load projects by address (localStorage)
 - **Photo Upload**: Add site photos for 3D imagery reference
 - **Quote Generation**: Download professional PDF quotes with map snapshot
 - **Metric/Imperial Toggle**: Switch between measurement units
@@ -35,6 +37,7 @@ A web-based platform that allows trades and services to enter client addresses a
 - **Maps**: @react-google-maps/api
 - **PDF Generation**: jsPDF + html2canvas
 - **Icons**: Lucide React
+- **Storage**: localStorage (Supabase-ready)
 
 ## Getting Started
 
@@ -89,21 +92,27 @@ Enter the 4-digit PIN to access the dashboard.
 Use the search bar to find a property by address. The map will automatically zoom to the selected location.
 
 ### 3. Draw Areas
-1. Click "Start Area" to begin drawing
+1. Click a quick-add button (Roof, Grass, Concrete, etc.) on the right side
 2. Click on the map to place polygon points
 3. Close the shape to complete the area
-4. The measurement will appear in the Pricing Panel
+4. The area automatically gets the correct color and service type
+5. Use the checkbox to toggle areas on/off in calculations
 
 ### 4. Configure Pricing
 1. Expand an area in the Pricing Panel
-2. Select a service type from the dropdown
+2. Optionally change the service type
 3. Optionally override the price per unit
 4. View calculated total
 
-### 5. Add Photos
+### 5. Save Projects
+1. Click "Save" in the Projects panel to save current work
+2. Projects are stored by address
+3. Click any saved project to reload it with all areas
+
+### 6. Add Photos
 Click the camera icon to upload site photos for reference.
 
-### 6. Download Quote
+### 7. Download Quote
 Click "Download Quote & Map" to generate a PDF with:
 - Property address
 - Map screenshot
@@ -115,24 +124,29 @@ Click "Download Quote & Map" to generate a PDF with:
 ```
 mapquotey-app/
 ├── app/
-│   ├── globals.css          # Global styles
-│   ├── layout.tsx           # Root layout
-│   └── page.tsx             # Home page
+│   ├── api/
+│   │   └── detect/           # AI detection API (deprecated)
+│   ├── globals.css           # Global styles
+│   ├── layout.tsx            # Root layout
+│   └── page.tsx              # Home page
 ├── components/
-│   ├── AddressSearch.tsx    # Google Places autocomplete
-│   ├── Dashboard.tsx        # Main dashboard component
-│   ├── LoginForm.tsx        # PIN authentication form
-│   ├── MapControls.tsx      # Map control buttons
-│   ├── MapView.tsx          # Google Maps component
-│   ├── PhotoUpload.tsx      # Photo upload component
-│   └── PricingPanel.tsx     # Pricing sidebar
+│   ├── AddressSearch.tsx     # Google Places autocomplete
+│   ├── AutoDetect.tsx        # AI auto-detection (deprecated)
+│   ├── Dashboard.tsx         # Main dashboard component
+│   ├── LoginForm.tsx         # PIN authentication form
+│   ├── MapControls.tsx       # Map control buttons
+│   ├── MapView.tsx           # Google Maps component
+│   ├── PhotoUpload.tsx       # Photo upload component
+│   ├── PricingPanel.tsx      # Pricing sidebar with checkboxes
+│   ├── ProjectsPanel.tsx     # Projects save/load sidebar
+│   └── QuickAddButtons.tsx   # Area type quick-add buttons
 ├── context/
-│   └── AuthContext.tsx      # Authentication state
+│   └── AuthContext.tsx       # Authentication state
 ├── lib/
-│   ├── calculations.ts      # Area/distance calculations
-│   └── services.ts          # Service configurations
+│   ├── calculations.ts       # Area/distance calculations
+│   └── services.ts           # Service configurations
 ├── types/
-│   └── index.ts             # TypeScript interfaces
+│   └── index.ts              # TypeScript interfaces
 └── README.md
 ```
 
@@ -166,6 +180,18 @@ Edit `lib/services.ts`:
 export const DEFAULT_MOBILIZATION_FEE = 200; // Change this value
 ```
 
+### Adding New Area Types
+
+Edit `components/QuickAddButtons.tsx` to add new area types:
+```typescript
+const areaTypes = [
+  { id: "roof", label: "Roof", icon: Home, color: "#ef4444" },
+  // Add new types here
+];
+```
+
+Also update `components/MapView.tsx` featureColors and `components/PricingPanel.tsx` areaColors.
+
 ## API Key Setup
 
 ### Google Cloud Console
@@ -185,15 +211,103 @@ For production, restrict your API key:
 - **Website restrictions**: Add your domain(s)
 - **API restrictions**: Select only required APIs
 
-## Learnings & Notes
+## Learnings & Technical Notes
+
+### Google Maps Polygon Rendering with React
+
+**Problem**: Polygons created via native `google.maps.Polygon` API were attaching to stale map references when using `@react-google-maps/api`.
+
+**Symptoms**:
+- Polygons showed as "created" in console with correct coordinates
+- `polygon.getMap()` returned a map object
+- But polygons were invisible on the actual displayed map
+
+**Root Cause**: The `<GoogleMap>` component can internally recreate its map instance on prop changes (center, zoom, options). When this happens, the `onLoad` callback doesn't fire again, leaving `mapRef` pointing to an old/unmounted map instance.
+
+**Solution**: Use the `useGoogleMap()` hook inside a child component of `<GoogleMap>`. This hook retrieves the map instance directly from React context, ensuring you always have the current map:
+
+```typescript
+function PolygonRenderer({ areas }) {
+  const map = useGoogleMap(); // Always gets current map from context
+
+  useEffect(() => {
+    if (!map) return;
+    // Create polygons with map instance from hook
+    areas.forEach(area => {
+      new google.maps.Polygon({
+        paths: area.points,
+        map: map, // Guaranteed to be the visible map
+      });
+    });
+  }, [map, areas]);
+}
+```
+
+**Key Insight**: The `DrawingManager` component works because it's a React component child of `<GoogleMap>` that automatically gets the correct map via context. Manual polygon creation needs the same pattern.
+
+### Map Bounds and Coordinate Transformation
+
+**Problem**: When capturing map screenshots for AI analysis, the `mapBounds` prop could become stale if passed at render time rather than fetched fresh.
+
+**Solution**: Always get bounds directly from `mapRef.getBounds()` at the moment you need them, not from props:
+
+```typescript
+const handleDetect = async () => {
+  // Get FRESH bounds at detection time
+  const currentBounds = mapRef.getBounds();
+  // NOT: mapBounds prop which may be stale
+};
+```
+
+### AI Auto-Detection Limitations
+
+**Attempted**: Using GPT-4 Vision to detect property features (roof, lawn, driveway, etc.) and return percentage-based bounding boxes.
+
+**Problems Encountered**:
+1. Vision models aren't designed for precise bounding box coordinates
+2. Coordinate transformation from image percentages to lat/lng is complex due to:
+   - Mercator projection distortion
+   - Image capture dimensions vs map bounds mismatch
+   - Google Maps UI elements in captured images
+3. Features have irregular shapes that don't fit rectangles well
+4. Consistent alignment across different zoom levels and locations is impractical
+
+**Decision**: Removed AI auto-detection in favor of manual quick-add buttons. Manual drawing is more accurate and gives users precise control.
+
+**Lesson**: AI vision is good for classification ("this property has a pool") but not for precise spatial placement. For accurate measurements, manual drawing is superior.
 
 ### Coordinate Calculations
 
 The app uses the **Haversine formula** for accurate distance calculations on Earth's curved surface. For area calculations, it uses a local planar approximation with the **Shoelace formula**.
 
-### Drawing on Maps
+### Color-Coded Area Types
 
-Google Maps Drawing Manager handles polygon creation. The app converts the Google Maps path objects to simple lat/lng arrays for storage and recalculation.
+Areas are identified by their ID prefix (e.g., "roof-123456"). The `getAreaColor()` function extracts the type and returns the corresponding color:
+
+```typescript
+const getAreaColor = (areaId: string): string => {
+  const parts = areaId.split("-");
+  const featureType = parts[0];
+  return featureColors[featureType] || "#f97316";
+};
+```
+
+### localStorage for Projects
+
+Projects are saved to localStorage with the structure:
+```typescript
+interface Project {
+  id: string;
+  address: string;
+  center: LatLng;
+  zoom: number;
+  areas: DrawnArea[];
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+This allows offline persistence but doesn't sync across devices. Ready for Supabase upgrade.
 
 ### PDF Generation
 
@@ -205,16 +319,17 @@ Simple PIN-based auth stores state in localStorage. For production, consider imp
 
 ## Future Improvements
 
+- [ ] Supabase integration for cloud project storage
 - [ ] User accounts with database storage
 - [ ] Multiple user roles (admin, estimator)
 - [ ] Quote history and management
 - [ ] Customer database integration
 - [ ] Street View integration for eye-level measurements
-- [ ] 3D photogrammetry from uploaded images
 - [ ] Email quotes directly to customers
 - [ ] Mobile app version
-- [ ] Offline support
+- [ ] Offline support with sync
 - [ ] Property boundary overlay from cadastral data
+- [ ] Undo/redo for drawing operations
 
 ## Troubleshooting
 
@@ -223,13 +338,33 @@ Simple PIN-based auth stores state in localStorage. For production, consider imp
 - Verify the required APIs are enabled in Google Cloud Console
 - Check browser console for error messages
 
+### Polygons not showing
+- Check console for "PolygonRenderer: No map from useGoogleMap hook"
+- Ensure areas have valid points (at least 3 coordinates)
+- Verify area.enabled !== false
+
 ### Drawing not working
-- Ensure you clicked "Start Area" before drawing
+- Ensure you clicked a quick-add button before drawing
 - Try refreshing the page if the drawing mode is stuck
 
 ### PDF generation fails
 - Check browser console for errors
 - Ensure the map has fully loaded before downloading
+
+### Projects not saving
+- Check browser's localStorage is not full or disabled
+- Look for errors in console
+
+## Deployment
+
+### Vercel (Recommended)
+
+```bash
+npx vercel --prod
+```
+
+Ensure environment variables are set in Vercel dashboard:
+- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
 
 ## License
 

@@ -21,18 +21,38 @@ export default function AddressSearch({
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleReady, setIsGoogleReady] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const autocompleteService = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesService = useRef<google.maps.places.PlacesService | null>(null);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // Check for Google Maps availability with polling
   useEffect(() => {
-    if (typeof google !== "undefined" && google.maps) {
-      autocompleteService.current = new google.maps.places.AutocompleteService();
-      const mapDiv = document.createElement("div");
-      placesService.current = new google.maps.places.PlacesService(mapDiv);
-    }
+    const checkGoogle = () => {
+      if (typeof google !== "undefined" && google.maps && google.maps.places) {
+        autocompleteService.current = new google.maps.places.AutocompleteService();
+        const mapDiv = document.createElement("div");
+        placesService.current = new google.maps.places.PlacesService(mapDiv);
+        setIsGoogleReady(true);
+        return true;
+      }
+      return false;
+    };
+
+    // Check immediately
+    if (checkGoogle()) return;
+
+    // Poll every 100ms until Google is ready
+    const interval = setInterval(() => {
+      if (checkGoogle()) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    // Cleanup
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -57,7 +77,7 @@ export default function AddressSearch({
     autocompleteService.current.getPlacePredictions(
       {
         input,
-        componentRestrictions: { country: "au" }, // Restrict to Australia
+        componentRestrictions: { country: "au" },
         types: ["address"],
       },
       (results, status) => {
@@ -128,8 +148,9 @@ export default function AddressSearch({
           value={query}
           onChange={handleInputChange}
           onFocus={() => predictions.length > 0 && setIsOpen(true)}
-          placeholder="Enter property address..."
-          className="w-full pl-12 pr-10 py-3 bg-white border border-gray-200 rounded-full shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+          placeholder={isGoogleReady ? "Enter property address..." : "Loading maps..."}
+          disabled={!isGoogleReady}
+          className="w-full pl-12 pr-10 py-3 bg-white border border-gray-200 rounded-full shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-wait"
         />
         {query && (
           <button

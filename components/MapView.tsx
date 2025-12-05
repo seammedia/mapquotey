@@ -247,6 +247,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
         const isSelected = selectedAreaId === area.id;
         const color = getAreaColor(area.id, isSelected);
 
+        console.log(`Rendering polygon ${area.id} with color ${color}:`, area.points);
+
         return (
           <Polygon
             key={area.id}

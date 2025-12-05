@@ -207,8 +207,9 @@ export default function AutoDetect({
     result.features.forEach((feature, index) => {
       if (!selectedFeatures.has(index)) return;
 
+      console.log(`Feature ${feature.type} bounds from AI:`, feature.bounds);
       const points = boundsToPolygon(feature.bounds, savedMapBounds);
-      console.log(`Feature ${feature.type} points:`, points);
+      console.log(`Feature ${feature.type} converted points:`, JSON.stringify(points, null, 2));
       const measurements = getMeasurements(points);
 
       // Use the AI-estimated area instead of calculated (more accurate)

@@ -1,23 +1,22 @@
 "use client";
 
 import { useCallback, useRef, useState, useEffect, useMemo, forwardRef, useImperativeHandle } from "react";
-import { GoogleMap, useJsApiLoader, DrawingManager } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, DrawingManager, useGoogleMap } from "@react-google-maps/api";
 import { DrawnArea, LatLng } from "@/types";
 import { getMeasurements } from "@/lib/calculations";
 
 // Feature type colors for AI-detected areas
 const featureColors: Record<string, string> = {
-  lawn: "#22c55e",      // Green
-  roof: "#ef4444",      // Red
-  driveway: "#6b7280",  // Gray
-  pool: "#3b82f6",      // Blue
-  deck: "#a855f7",      // Purple
-  patio: "#f59e0b",     // Amber
-  fence: "#78716c",     // Stone
-  garden: "#84cc16",    // Lime
+  lawn: "#22c55e",
+  roof: "#ef4444",
+  driveway: "#6b7280",
+  pool: "#3b82f6",
+  deck: "#a855f7",
+  patio: "#f59e0b",
+  fence: "#78716c",
+  garden: "#84cc16",
 };
 
-// Get color for an area based on its ID (AI areas have format: ai-{type}-{timestamp}-{index})
 const getAreaColor = (areaId: string): string => {
   if (areaId.startsWith("ai-")) {
     const parts = areaId.split("-");
@@ -27,9 +26,9 @@ const getAreaColor = (areaId: string): string => {
         return featureColors[featureType];
       }
     }
-    return "#a855f7"; // Default purple for AI areas
+    return "#a855f7";
   }
-  return "#f97316"; // Orange for manual areas
+  return "#f97316";
 };
 
 const libraries: ("places" | "drawing" | "geometry")[] = ["places", "drawing", "geometry"];
@@ -60,6 +59,86 @@ export interface MapViewRef {
   getBounds: () => google.maps.LatLngBounds | null;
 }
 
+// Child component that uses useGoogleMap hook to get the REAL current map
+function PolygonRenderer({
+  areas,
+  selectedAreaId,
+  onSelect
+}: {
+  areas: DrawnArea[];
+  selectedAreaId: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  const map = useGoogleMap(); // This hook gets the map from GoogleMap's context
+  const polygonsRef = useRef<google.maps.Polygon[]>([]);
+
+  useEffect(() => {
+    if (!map) {
+      console.log("PolygonRenderer: No map from useGoogleMap hook");
+      return;
+    }
+
+    console.log("=== PolygonRenderer useEffect ===", {
+      areasCount: areas.length,
+      mapFromHook: !!map,
+      mapCenter: map.getCenter()?.toString(),
+      mapZoom: map.getZoom()
+    });
+
+    // Clear all existing polygons
+    polygonsRef.current.forEach(p => {
+      p.setMap(null);
+    });
+    polygonsRef.current = [];
+
+    // Create fresh polygons
+    areas.forEach((area, idx) => {
+      if (!area.points || area.points.length < 3) {
+        console.warn(`Invalid area ${area.id}, skipping`);
+        return;
+      }
+
+      const color = getAreaColor(area.id);
+      const isSelected = selectedAreaId === area.id;
+
+      const polygon = new google.maps.Polygon({
+        paths: area.points.map(p => ({ lat: p.lat, lng: p.lng })),
+        strokeColor: isSelected ? "#ffffff" : color,
+        strokeOpacity: 1,
+        strokeWeight: isSelected ? 4 : 3,
+        fillColor: color,
+        fillOpacity: isSelected ? 0.7 : 0.5,
+        zIndex: isSelected ? 9999 : 1000,
+        clickable: true,
+        map: map,
+      });
+
+      console.log(`Created polygon ${idx + 1}/${areas.length}:`, {
+        id: area.id,
+        color,
+        pointsCount: area.points.length,
+        isAttached: polygon.getMap() === map,
+        firstPoint: area.points[0]
+      });
+
+      polygon.addListener("click", () => {
+        onSelect(selectedAreaId === area.id ? null : area.id);
+      });
+
+      polygonsRef.current.push(polygon);
+    });
+
+    console.log(`=== ${polygonsRef.current.length} polygons created ===`);
+
+    // Cleanup
+    return () => {
+      polygonsRef.current.forEach(p => p.setMap(null));
+    };
+  }, [map, areas, selectedAreaId, onSelect]);
+
+  return null;
+}
+
 const MapView = forwardRef<MapViewRef, MapViewProps>(({
   center,
   zoom = 18,
@@ -75,12 +154,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
   });
 
   const mapRef = useRef<google.maps.Map | null>(null);
-  const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
-  const polygonsRef = useRef<google.maps.Polygon[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
-  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
 
-  // Expose map methods to parent
   useImperativeHandle(ref, () => ({
     getMap: () => mapRef.current,
     getBounds: () => mapRef.current?.getBounds() || null,
@@ -104,17 +179,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
   }, [isLoaded, showTopography]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
-    console.log("=== MAP LOADED ===", map.getDiv().id || "no-id");
+    console.log("=== GoogleMap onLoad callback ===");
     mapRef.current = map;
-    setMapInstance(map); // Trigger re-render with map instance
+    // Expose for debugging
+    if (typeof window !== 'undefined') {
+      (window as any).__mapQuoteyMap = map;
+    }
   }, []);
-
-  const onDrawingManagerLoad = useCallback(
-    (drawingManager: google.maps.drawing.DrawingManager) => {
-      drawingManagerRef.current = drawingManager;
-    },
-    []
-  );
 
   const onPolygonComplete = useCallback(
     (polygon: google.maps.Polygon) => {
@@ -136,8 +207,6 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
       };
 
       onAreasChange([...areas, newArea]);
-
-      // Remove the temporary polygon (we'll render our own)
       polygon.setMap(null);
     },
     [areas, drawingMode, onAreasChange]
@@ -163,14 +232,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
       };
 
       onAreasChange([...areas, newArea]);
-
-      // Remove the temporary polyline
       polyline.setMap(null);
     },
     [areas, onAreasChange]
   );
 
-  // Pan to center when it changes
   useEffect(() => {
     if (mapRef.current && center) {
       mapRef.current.panTo(center);
@@ -178,93 +244,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
     }
   }, [center, zoom]);
 
-  // Create and manage polygons using native Google Maps API
-  // This runs whenever areas change or map instance changes
-  useEffect(() => {
-    const map = mapInstance;
-
-    console.log("=== POLYGON EFFECT ===", {
-      hasMap: !!map,
-      areasCount: areas.length,
-      existingPolygons: polygonsRef.current.length
-    });
-
-    if (!map) {
-      console.log("No map instance yet, skipping polygon creation");
-      return;
-    }
-
-    // Clear ALL existing polygons first
-    console.log("Clearing", polygonsRef.current.length, "existing polygons");
-    polygonsRef.current.forEach((p) => {
-      p.setMap(null);
-    });
-    polygonsRef.current = [];
-
-    // Create fresh polygons for each area
-    areas.forEach((area, index) => {
-      const color = getAreaColor(area.id);
-      const isSelected = selectedAreaId === area.id;
-
-      console.log(`Creating polygon ${index + 1}/${areas.length}:`, {
-        id: area.id,
-        color,
-        pointsCount: area.points.length,
-        firstPoint: area.points[0],
-        lastPoint: area.points[area.points.length - 1]
-      });
-
-      // Validate points
-      if (!area.points || area.points.length < 3) {
-        console.error(`Invalid points for area ${area.id}:`, area.points);
-        return;
-      }
-
-      // Create path from points
-      const path = area.points.map(p => new google.maps.LatLng(p.lat, p.lng));
-
-      // Create new polygon with explicit settings
-      const polygon = new google.maps.Polygon({
-        paths: path,
-        strokeColor: isSelected ? "#ffffff" : color,
-        strokeOpacity: 1,
-        strokeWeight: isSelected ? 4 : 3,
-        fillColor: color,
-        fillOpacity: isSelected ? 0.7 : 0.5,
-        zIndex: isSelected ? 9999 : 1000,
-        clickable: true,
-        geodesic: true,
-      });
-
-      // IMPORTANT: Set map AFTER creating polygon
-      polygon.setMap(map);
-
-      // Verify it's attached
-      const attachedMap = polygon.getMap();
-      console.log(`Polygon ${area.id} attached:`, {
-        hasMap: !!attachedMap,
-        sameMap: attachedMap === map,
-        visible: polygon.getVisible(),
-        pathLength: polygon.getPath()?.getLength()
-      });
-
-      // Add click handler
-      polygon.addListener("click", () => {
-        console.log("Polygon clicked:", area.id);
-        setSelectedAreaId(prev => prev === area.id ? null : area.id);
-      });
-
-      // Store reference
-      polygonsRef.current.push(polygon);
-    });
-
-    console.log("=== POLYGONS CREATED ===", polygonsRef.current.length);
-
-    // Cleanup on unmount only
-    return () => {
-      // Don't clear here - we clear at the start of the effect
-    };
-  }, [areas, mapInstance, selectedAreaId]);
+  const handleSelect = useCallback((id: string | null) => {
+    setSelectedAreaId(id);
+  }, []);
 
   if (loadError) {
     return (
@@ -293,10 +275,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
       onLoad={onLoad}
       options={mapOptions}
     >
-      {/* Drawing Manager */}
       {isDrawing && (
         <DrawingManager
-          onLoad={onDrawingManagerLoad}
           onPolygonComplete={onPolygonComplete}
           onPolylineComplete={onPolylineComplete}
           options={{
@@ -320,6 +300,15 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(({
               draggable: false,
             },
           }}
+        />
+      )}
+
+      {/* Use child component with useGoogleMap hook for correct map reference */}
+      {areas.length > 0 && (
+        <PolygonRenderer
+          areas={areas}
+          selectedAreaId={selectedAreaId}
+          onSelect={handleSelect}
         />
       )}
     </GoogleMap>
